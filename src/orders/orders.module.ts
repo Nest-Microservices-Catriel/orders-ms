@@ -8,10 +8,14 @@ import { NATS_SERVICE } from 'src/config/services';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { envs } from 'src/config/envs';
 import { NatsModule } from 'src/transports/nats.module';
+import { OrderReceipt } from './entities/order-receipt.entity';
 
 @Module({
   controllers: [OrdersController],
   providers: [OrdersService],
-  imports: [TypeOrmModule.forFeature([Order, OrderItem]), NatsModule],
+  imports: [
+    TypeOrmModule.forFeature([Order, OrderItem, OrderReceipt]),
+    NatsModule,
+  ],
 })
 export class OrdersModule {}
