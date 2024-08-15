@@ -4,10 +4,12 @@ import {
   Column,
   Entity,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { OrderStatus } from '../enum/order-status.enum';
 import { OrderItem } from './order-item.entity';
+import { OrderReceipt } from './order-receipt.entity';
 
 @Entity('orders')
 export class Order {
@@ -24,6 +26,12 @@ export class Order {
 
   @Column('bool', { default: false })
   paid: boolean;
+
+  @Column('text', { default: null })
+  stripeChargeId: string | null;
+
+  @OneToOne(() => OrderReceipt, (orderReceipt) => orderReceipt.order)
+  orderReceipt: OrderReceipt;
 
   @Column({ type: 'timestamp', nullable: true })
   paidAt: Date | null;

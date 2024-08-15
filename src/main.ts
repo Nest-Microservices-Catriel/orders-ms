@@ -24,7 +24,8 @@ async function bootstrap() {
       transform: true,
     }),
   );
-
+  console.log(envs.natsServers);
+  
   await app.listen();
 
   logger.log(`Orders running on port: ${envs.port}`);

@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { envs } from './config/envs';
 import { Order } from './orders/entities/order.entity';
 import { OrderItem } from './orders/entities/order-item.entity';
+import { OrderReceipt } from './orders/entities/order-receipt.entity';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { OrderItem } from './orders/entities/order-item.entity';
       password: envs.postgresPassword,
       database: envs.postgresDb,
       synchronize: true,
-      entities: [Order, OrderItem],
+      entities: [Order, OrderItem, OrderReceipt],
       autoLoadEntities: true,
     }),
     OrdersModule,

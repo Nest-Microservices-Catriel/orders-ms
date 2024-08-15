@@ -7,20 +7,29 @@ import {
 import { CreateOrderDto } from './dto/create-order.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Order } from './entities/order.entity';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { OrderPaginationDto } from './dto/order-pagination.dto';
-import { ChangeOrderStatusDto, OrderItemDto } from './dto';
+import { ChangeOrderStatusDto, OrderItemDto, PaidOrderDto } from './dto';
 import { firstValueFrom } from 'rxjs';
 import { NATS_SERVICE } from 'src/config/services';
 import { IProductMS } from 'src/types/product-ms.type';
+import { OrderWithProducts } from './interfaces/order-with-products';
+import { OrderStatus } from './enum/order-status.enum';
+import { OrderReceipt } from './entities/order-receipt.entity';
 
 @Injectable()
 export class OrdersService {
+  //3. Crear transaccion de base de datos
+
   constructor(
     @Inject(NATS_SERVICE) private natsClient: ClientProxy,
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
+    @InjectRepository(OrderReceipt)
+    private readonly orderReceiptRepository: Repository<OrderReceipt>,
+
+    private readonly dataSource: DataSource, // Inyecta DataSource para usar QueryRunner
   ) {}
 
   async create(createOrderDto: CreateOrderDto) {
@@ -101,6 +110,21 @@ export class OrdersService {
     return this.orderRepository.save(order);
   }
 
+  async createPaymentSession(order: OrderWithProducts) {
+    const paymentSession = await firstValueFrom(
+      this.natsClient.send('create.payment.session', {
+        orderId: order.id,
+        currency: 'usd',
+        items: order.orderItem.map((item) => ({
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+      }),
+    );
+    return paymentSession;
+  }
+
   //? Helpers
 
   private async getProductsMs(ids: number[]) {
@@ -158,5 +182,45 @@ export class OrdersService {
           .name,
       })),
     };
+  }
+
+  async paidOrder(paidOrderDto: PaidOrderDto) {
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.startTransaction();
+    const order = await this.findOne(paidOrderDto.orderId);
+    try {
+      const orderUpdate = await queryRunner.manager
+        .createQueryBuilder()
+        .update(Order)
+        .set({
+          status: OrderStatus.PAID,
+          paid: true,
+          paidAt: new Date(),
+          stripeChargeId: paidOrderDto.stripePaymentId,
+        })
+        .where('id = :id', { id: paidOrderDto.orderId })
+        .execute();
+
+      const orderReceipt = await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into(OrderReceipt)
+        .values({
+          receiptUrl: paidOrderDto.receiptUrl,
+          order: order,
+        })
+        .execute();
+      await queryRunner.commitTransaction();
+
+      return {
+        orderUpdate,
+        orderReceipt,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+    } finally {
+      await queryRunner.release();
+    }
   }
 }
